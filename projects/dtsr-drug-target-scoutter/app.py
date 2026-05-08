@@ -1041,6 +1041,7 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                         st.subheader("7. Open Targets Association Score Prototype")
 
                         disease_options = create_disease_selection_options(disease_ot_df)
+                        target_options = create_target_selection_options(target_ot_df)
 
                         if not disease_options:
                             st.warning(
@@ -1049,43 +1050,67 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                                 Association score retrieval cannot be performed.
                                 """
                             )
+
+                        elif not target_options:
+                            st.warning(
+                                """
+                                No valid Open Targets target entity candidates were found.
+                                Association score retrieval cannot be performed.
+                                """
+                            )
+
                         else:
                             selected_disease_option = st.selectbox(
                                 "Select the correct Open Targets disease entity for association scoring:",
                                 options=disease_options
                             )
 
+                            selected_target_option = st.selectbox(
+                                "Select the correct Open Targets target entity for association scoring:",
+                                options=target_options
+                            )
+
                             selected_disease_id = extract_disease_id_from_option(selected_disease_option)
+                            selected_target_id = extract_target_id_from_option(selected_target_option)
 
                             st.write(f"Selected Open Targets Disease ID: `{selected_disease_id}`")
+                            st.write(f"Selected Open Targets Target ID: `{selected_target_id}`")
 
-                            if not selected_disease_id:
+                            if not selected_disease_id or not selected_target_id:
                                 st.warning(
                                     """
-                                    No valid disease ID was selected.
+                                    A valid disease ID and target ID are required.
                                     Association score retrieval cannot be performed.
                                     """
                                 )
                             else:
-                                with st.spinner("Retrieving Open Targets association scores using selected disease entity..."):
-                                    association_df = build_association_table(
-                                        target_ot_df,
-                                        selected_disease_id
+                                with st.spinner("Retrieving Open Targets association score using selected disease and target entities..."):
+                                    association_info = get_association_score_from_open_targets(
+                                        target_id=selected_target_id,
+                                        disease_id=selected_disease_id
                                     )
 
-                                if association_df.empty:
-                                    st.warning("No association score table could be generated.")
-                                else:
-                                    st.dataframe(association_df, use_container_width=True)
+                                selected_association_df = pd.DataFrame(
+                                    [
+                                        {
+                                            "Selected Disease ID": selected_disease_id,
+                                            "Selected Target ID": selected_target_id,
+                                            "Association Score": association_info.get("Association Score", ""),
+                                            "Association Status": association_info.get("Association Status", ""),
+                                            "Evidence Type Scores": association_info.get("Evidence Type Scores", "")
+                                        }
+                                    ]
+                                )
 
-                                    st.caption(
-                                        """
-                                        Association scores are retrieved from Open Targets using the user-selected
-                                        disease entity and target entity candidates. This improves reliability compared
-                                        with automatically selecting the first disease candidate.
-                                        """
-                                    )
+                                st.dataframe(selected_association_df, use_container_width=True)
 
+                                st.caption(
+                                    """
+                                    Association score is retrieved from Open Targets using the user-selected
+                                    disease entity and user-selected target entity. This improves reliability
+                                    compared with automatically selecting the first disease or target candidate.
+                                    """
+                                )
                  
                     st.subheader("8. Paper Details")
 
@@ -1133,5 +1158,5 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v8: PubMed API + UniProt validation + user-selected Open Targets disease association scoring."
+    "DTSR MVP v9: PubMed API + UniProt validation + user-selected Open Targets disease and target association scoring."
 )
