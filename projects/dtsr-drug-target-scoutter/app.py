@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 
 # ------------------------------------------------------------
 # DTSR: Drug Target ScoutteR
-# MVP v5: PubMed API + candidate extraction/classification
-# + UniProt validation prototype
+# MVP v6: PubMed API + candidate extraction/classification
+# + UniProt validation + Open Targets entity search prototype
 #
 # Data principle:
 # - Use public metadata and abstracts
@@ -30,6 +30,8 @@ PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
 UNIPROT_SEARCH_URL = "https://rest.uniprot.org/uniprotkb/search"
+
+OPEN_TARGETS_GRAPHQL_URL = "https://api.platform.opentargets.org/api/v4/graphql"
 
 
 STOP_TERMS = {
@@ -180,10 +182,6 @@ KNOWN_TARGET_RULES = {
 
 
 def build_pubmed_query(disease_name: str) -> str:
-    """
-    사용자가 입력한 질환명을 PubMed 검색용 query로 바꾸는 함수.
-    """
-
     disease_name = disease_name.strip()
 
     query = (
@@ -195,10 +193,6 @@ def build_pubmed_query(disease_name: str) -> str:
 
 
 def search_pubmed_ids(query: str, max_results: int) -> list:
-    """
-    PubMed ESearch API를 사용해 검색어에 해당하는 PMID 목록을 가져오는 함수.
-    """
-
     params = {
         "db": "pubmed",
         "term": query,
@@ -217,10 +211,6 @@ def search_pubmed_ids(query: str, max_results: int) -> list:
 
 
 def get_text_from_element(element) -> str:
-    """
-    XML element 안의 모든 텍스트를 하나로 합치는 보조 함수.
-    """
-
     if element is None:
         return ""
 
@@ -228,10 +218,6 @@ def get_text_from_element(element) -> str:
 
 
 def extract_article_info(article) -> dict:
-    """
-    PubMed XML에서 논문 제목, 저널, 연도, 초록, PMID를 추출하는 함수.
-    """
-
     pmid_element = article.find(".//PMID")
     pmid = pmid_element.text if pmid_element is not None else ""
 
@@ -265,10 +251,6 @@ def extract_article_info(article) -> dict:
 
 
 def fetch_pubmed_details(pmids: list) -> list:
-    """
-    PMID 목록을 PubMed EFetch API에 보내서 논문 상세정보를 가져오는 함수.
-    """
-
     if not pmids:
         return []
 
@@ -290,12 +272,6 @@ def fetch_pubmed_details(pmids: list) -> list:
 
 
 def extract_candidate_terms(text: str) -> list:
-    """
-    논문 제목과 초록에서 후보 타깃/바이오마커처럼 보이는 용어를 추출하는 함수.
-
-    현재는 MVP 단계이므로 정교한 AI 모델이 아니라 규칙 기반 방식을 사용한다.
-    """
-
     if not text:
         return []
 
@@ -324,10 +300,6 @@ def extract_candidate_terms(text: str) -> list:
 
 
 def classify_candidate_term(term: str) -> dict:
-    """
-    추출된 후보 용어를 타깃 유형과 가능한 모달리티로 분류하는 함수.
-    """
-
     normalized_term = term.strip()
 
     if normalized_term in KNOWN_TARGET_RULES:
@@ -391,10 +363,6 @@ def classify_candidate_term(term: str) -> dict:
 
 
 def get_primary_gene_name(entry: dict) -> str:
-    """
-    UniProt entry에서 대표 gene name을 추출하는 함수.
-    """
-
     genes = entry.get("genes", [])
 
     if not genes:
@@ -407,10 +375,6 @@ def get_primary_gene_name(entry: dict) -> str:
 
 
 def get_recommended_protein_name(entry: dict) -> str:
-    """
-    UniProt entry에서 권장 단백질 이름을 추출하는 함수.
-    """
-
     protein_description = entry.get("proteinDescription", {})
 
     recommended_name = protein_description.get("recommendedName", {})
@@ -420,7 +384,6 @@ def get_recommended_protein_name(entry: dict) -> str:
     if protein_name:
         return protein_name
 
-    # recommendedName이 없는 경우 submissionNames에서 첫 번째 이름을 가져온다.
     submission_names = protein_description.get("submissionNames", [])
     if submission_names:
         return submission_names[0].get("fullName", {}).get("value", "")
@@ -429,10 +392,6 @@ def get_recommended_protein_name(entry: dict) -> str:
 
 
 def get_function_comment(entry: dict) -> str:
-    """
-    UniProt entry에서 FUNCTION comment를 추출하는 함수.
-    """
-
     comments = entry.get("comments", [])
 
     for comment in comments:
@@ -445,10 +404,6 @@ def get_function_comment(entry: dict) -> str:
 
 
 def parse_uniprot_result(entry: dict) -> dict:
-    """
-    UniProt 검색 결과 한 개에서 DTSR에 필요한 정보를 추출하는 함수.
-    """
-
     accession = entry.get("primaryAccession", "")
     entry_name = entry.get("uniProtkbId", "")
     organism = entry.get("organism", {}).get("scientificName", "")
@@ -471,16 +426,6 @@ def parse_uniprot_result(entry: dict) -> dict:
 
 
 def search_uniprot_candidate(term: str) -> dict:
-    """
-    후보 용어 하나를 UniProt API로 검색하는 함수.
-
-    현재 MVP에서는 사람 단백질을 우선으로 검색한다.
-    query 설명:
-    - gene_exact: 후보 용어와 정확히 일치하는 gene name 검색
-    - organism_id:9606: Homo sapiens
-    - reviewed:true: Swiss-Prot reviewed entry 우선
-    """
-
     clean_term = term.strip()
 
     if not clean_term:
@@ -501,7 +446,6 @@ def search_uniprot_candidate(term: str) -> dict:
     results = data.get("results", [])
 
     if not results:
-        # gene_exact에서 결과가 없으면 일반 keyword 검색으로 한 번 더 시도한다.
         fallback_query = f'({clean_term}) AND (organism_id:9606) AND (reviewed:true)'
         fallback_params = {
             "query": fallback_query,
@@ -536,12 +480,88 @@ def search_uniprot_candidate(term: str) -> dict:
     return parsed
 
 
-def summarize_candidate_terms(papers: list) -> pd.DataFrame:
+def query_open_targets(query: str, variables: dict) -> dict:
     """
-    여러 논문에서 추출된 후보 용어의 등장 빈도를 계산하고,
-    각 후보 용어에 대해 타깃 유형과 가능한 모달리티를 추가하는 함수.
+    Open Targets GraphQL API에 POST 요청을 보내는 공통 함수.
     """
 
+    response = requests.post(
+        OPEN_TARGETS_GRAPHQL_URL,
+        json={
+            "query": query,
+            "variables": variables
+        },
+        timeout=30
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    if "errors" in data:
+        raise ValueError(data["errors"])
+
+    return data.get("data", {})
+
+
+def search_open_targets_entities(search_query: str, entity_names: list, size: int = 5) -> list:
+    """
+    Open Targets /search endpoint를 사용해 질환 또는 타깃 엔티티를 검색하는 함수.
+
+    entity_names 예:
+    - ["disease"] 또는 ["disease", "phenotype"]
+    - ["target"]
+    """
+
+    graphql_query = """
+    query SearchEntities($queryString: String!, $entityNames: [String!], $page: Pagination) {
+      search(queryString: $queryString, entityNames: $entityNames, page: $page) {
+        hits {
+          id
+          name
+          entity
+          description
+        }
+      }
+    }
+    """
+
+    variables = {
+        "queryString": search_query,
+        "entityNames": entity_names,
+        "page": {
+            "index": 0,
+            "size": size
+        }
+    }
+
+    data = query_open_targets(graphql_query, variables)
+    hits = data.get("search", {}).get("hits", [])
+
+    return hits
+
+
+def open_targets_hits_to_dataframe(hits: list) -> pd.DataFrame:
+    """
+    Open Targets search hits를 pandas DataFrame으로 변환하는 함수.
+    """
+
+    rows = []
+
+    for hit in hits:
+        rows.append(
+            {
+                "Open Targets ID": hit.get("id", ""),
+                "Name": hit.get("name", ""),
+                "Entity Type": hit.get("entity", ""),
+                "Description": hit.get("description", "")
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def summarize_candidate_terms(papers: list) -> pd.DataFrame:
     all_terms = []
 
     for paper in papers:
@@ -574,13 +594,6 @@ def summarize_candidate_terms(papers: list) -> pd.DataFrame:
 
 
 def validate_candidates_with_uniprot(candidate_df: pd.DataFrame, max_candidates: int) -> pd.DataFrame:
-    """
-    후보 용어 상위 N개를 UniProt API로 검증하는 함수.
-
-    너무 많은 후보를 한 번에 검색하면 API 요청이 많아질 수 있으므로,
-    사용자가 선택한 개수만큼만 검증한다.
-    """
-
     if candidate_df.empty:
         return candidate_df
 
@@ -612,6 +625,80 @@ def validate_candidates_with_uniprot(candidate_df: pd.DataFrame, max_candidates:
     return pd.DataFrame(rows)
 
 
+def search_open_targets_for_validated_candidates(uniprot_df: pd.DataFrame, max_targets: int) -> pd.DataFrame:
+    """
+    UniProt에서 검증된 후보들의 Gene Name을 사용해
+    Open Targets target entity 후보를 검색하는 함수.
+    """
+
+    if uniprot_df.empty or "Gene Name" not in uniprot_df.columns:
+        return pd.DataFrame()
+
+    rows = []
+
+    selected_df = uniprot_df.head(max_targets)
+
+    for _, row in selected_df.iterrows():
+        gene_name = row.get("Gene Name", "")
+        candidate_term = row.get("Candidate Term", "")
+
+        if not gene_name:
+            rows.append(
+                {
+                    "Candidate Term": candidate_term,
+                    "Gene Name": gene_name,
+                    "Open Targets ID": "",
+                    "Name": "",
+                    "Entity Type": "",
+                    "Description": "No UniProt gene name available for Open Targets search."
+                }
+            )
+            continue
+
+        try:
+            hits = search_open_targets_entities(gene_name, ["target"], size=1)
+        except Exception as error:
+            rows.append(
+                {
+                    "Candidate Term": candidate_term,
+                    "Gene Name": gene_name,
+                    "Open Targets ID": "",
+                    "Name": "",
+                    "Entity Type": "",
+                    "Description": f"Open Targets search failed: {error}"
+                }
+            )
+            continue
+
+        if not hits:
+            rows.append(
+                {
+                    "Candidate Term": candidate_term,
+                    "Gene Name": gene_name,
+                    "Open Targets ID": "",
+                    "Name": "",
+                    "Entity Type": "",
+                    "Description": "No Open Targets target entity found."
+                }
+            )
+            continue
+
+        top_hit = hits[0]
+
+        rows.append(
+            {
+                "Candidate Term": candidate_term,
+                "Gene Name": gene_name,
+                "Open Targets ID": top_hit.get("id", ""),
+                "Name": top_hit.get("name", ""),
+                "Entity Type": top_hit.get("entity", ""),
+                "Description": top_hit.get("description", "")
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
 # ------------------------------------------------------------
 # Streamlit UI
 # ------------------------------------------------------------
@@ -634,8 +721,9 @@ st.info(
     paper metadata, abstracts, open-access full text, and public biological databases
     available through public APIs.
 
-    In this MVP version, DTSR retrieves **PubMed metadata and abstracts** and validates
-    selected candidate terms using the **UniProt public API**.
+    In this MVP version, DTSR retrieves **PubMed metadata and abstracts**, validates
+    selected candidate terms using the **UniProt public API**, and searches related
+    disease / target entities using the **Open Targets public GraphQL API**.
 
     DTSR does not collect or analyze paywalled full-text papers without permission.
     """
@@ -740,7 +828,49 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                             """
                         )
 
-                    st.subheader("6. Paper Details")
+                        st.subheader("6. Open Targets Entity Search")
+
+                        with st.spinner("Searching Open Targets disease entity..."):
+                            try:
+                                disease_hits = search_open_targets_entities(
+                                    disease_name,
+                                    ["disease", "phenotype"],
+                                    size=5
+                                )
+                                disease_ot_df = open_targets_hits_to_dataframe(disease_hits)
+                            except Exception as error:
+                                disease_ot_df = pd.DataFrame(
+                                    [
+                                        {
+                                            "Open Targets ID": "",
+                                            "Name": "",
+                                            "Entity Type": "",
+                                            "Description": f"Open Targets disease search failed: {error}"
+                                        }
+                                    ]
+                                )
+
+                        st.markdown("### Disease Entity Candidates")
+                        st.dataframe(disease_ot_df, use_container_width=True)
+
+                        with st.spinner("Searching Open Targets target entities for UniProt-validated candidates..."):
+                            target_ot_df = search_open_targets_for_validated_candidates(
+                                uniprot_df,
+                                max_uniprot_candidates
+                            )
+
+                        st.markdown("### Target Entity Candidates")
+                        st.dataframe(target_ot_df, use_container_width=True)
+
+                        st.caption(
+                            """
+                            Open Targets entity search is an early prototype step.
+                            The next version will use selected disease and target IDs
+                            to retrieve target-disease association evidence.
+                            """
+                        )
+
+                    st.subheader("7. Paper Details")
 
                     for index, paper in enumerate(papers, start=1):
                         with st.expander(f"{index}. {paper['Title']}"):
@@ -755,16 +885,16 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                             else:
                                 st.warning("No abstract available through PubMed API for this record.")
 
-                    st.subheader("7. Next DTSR Development Step")
+                    st.subheader("8. Next DTSR Development Step")
 
                     st.markdown(
                         """
-                        The next development step is to integrate disease-target association evidence
-                        using public biomedical databases such as Open Targets.
+                        The next development step is to retrieve disease-target association evidence
+                        using Open Targets disease and target IDs.
 
                         Future versions will integrate:
 
-                        - **Open Targets API** for disease-target association evidence
+                        - **Open Targets association evidence**
                         - **Human Protein Atlas** for normal tissue expression and safety window
                         - **Reactome / KEGG** pathway databases for mechanism mapping
                         - **Europe PMC API** for open-access literature metadata
@@ -786,5 +916,5 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v5: PubMed API search + candidate classification + UniProt public API validation."
+    "DTSR MVP v6: PubMed API + UniProt validation + Open Targets entity search prototype."
 )
