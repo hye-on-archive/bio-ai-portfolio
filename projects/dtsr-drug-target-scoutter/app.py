@@ -9,8 +9,8 @@ import xml.etree.ElementTree as ET
 
 # ------------------------------------------------------------
 # DTSR: Drug Target ScoutteR
-# MVP v6: PubMed API + candidate extraction/classification
-# + UniProt validation + Open Targets entity search prototype
+# MVP v7: PubMed API + UniProt validation
+# + Open Targets entity search + association score prototype
 #
 # Data principle:
 # - Use public metadata and abstracts
@@ -481,10 +481,6 @@ def search_uniprot_candidate(term: str) -> dict:
 
 
 def query_open_targets(query: str, variables: dict) -> dict:
-    """
-    Open Targets GraphQL API에 POST 요청을 보내는 공통 함수.
-    """
-
     response = requests.post(
         OPEN_TARGETS_GRAPHQL_URL,
         json={
@@ -505,14 +501,6 @@ def query_open_targets(query: str, variables: dict) -> dict:
 
 
 def search_open_targets_entities(search_query: str, entity_names: list, size: int = 5) -> list:
-    """
-    Open Targets /search endpoint를 사용해 질환 또는 타깃 엔티티를 검색하는 함수.
-
-    entity_names 예:
-    - ["disease"] 또는 ["disease", "phenotype"]
-    - ["target"]
-    """
-
     graphql_query = """
     query SearchEntities($queryString: String!, $entityNames: [String!], $page: Pagination) {
       search(queryString: $queryString, entityNames: $entityNames, page: $page) {
@@ -542,10 +530,6 @@ def search_open_targets_entities(search_query: str, entity_names: list, size: in
 
 
 def open_targets_hits_to_dataframe(hits: list) -> pd.DataFrame:
-    """
-    Open Targets search hits를 pandas DataFrame으로 변환하는 함수.
-    """
-
     rows = []
 
     for hit in hits:
@@ -559,6 +543,70 @@ def open_targets_hits_to_dataframe(hits: list) -> pd.DataFrame:
         )
 
     return pd.DataFrame(rows)
+
+
+def get_association_score_from_open_targets(target_id: str, disease_id: str) -> dict:
+    """
+    Open Targets GraphQL API에서 target-disease association score를 조회하는 함수.
+
+    Open Targets association query는 targetId와 diseaseId를 사용한다.
+    """
+
+    if not target_id or not disease_id:
+        return {
+            "Association Score": "",
+            "Association Status": "Missing target ID or disease ID"
+        }
+
+    graphql_query = """
+    query AssociationScore($targetId: String!, $diseaseId: String!) {
+      association(targetId: $targetId, diseaseId: $diseaseId) {
+        score
+        datatypeScores {
+          id
+          score
+        }
+      }
+    }
+    """
+
+    variables = {
+        "targetId": target_id,
+        "diseaseId": disease_id
+    }
+
+    try:
+        data = query_open_targets(graphql_query, variables)
+        association = data.get("association")
+
+        if not association:
+            return {
+                "Association Score": "",
+                "Association Status": "No association found"
+            }
+
+        score = association.get("score", "")
+        datatype_scores = association.get("datatypeScores", [])
+
+        evidence_summary = []
+
+        for item in datatype_scores:
+            evidence_summary.append(
+                f"{item.get('id', '')}: {item.get('score', '')}"
+            )
+
+        return {
+            "Association Score": score,
+            "Association Status": "Association found",
+            "Evidence Type Scores": "; ".join(evidence_summary)
+        }
+
+    except Exception as error:
+        return {
+            "Association Score": "",
+            "Association Status": f"Association query failed: {error}",
+            "Evidence Type Scores": ""
+        }
 
 
 def summarize_candidate_terms(papers: list) -> pd.DataFrame:
@@ -626,11 +674,6 @@ def validate_candidates_with_uniprot(candidate_df: pd.DataFrame, max_candidates:
 
 
 def search_open_targets_for_validated_candidates(uniprot_df: pd.DataFrame, max_targets: int) -> pd.DataFrame:
-    """
-    UniProt에서 검증된 후보들의 Gene Name을 사용해
-    Open Targets target entity 후보를 검색하는 함수.
-    """
-
     if uniprot_df.empty or "Gene Name" not in uniprot_df.columns:
         return pd.DataFrame()
 
@@ -699,6 +742,53 @@ def search_open_targets_for_validated_candidates(uniprot_df: pd.DataFrame, max_t
     return pd.DataFrame(rows)
 
 
+def safe_get_first_disease_id(disease_ot_df: pd.DataFrame) -> str:
+    if disease_ot_df.empty or "Open Targets ID" not in disease_ot_df.columns:
+        return ""
+
+    first_id = disease_ot_df.iloc[0].get("Open Targets ID", "")
+
+    return first_id
+
+
+def build_association_table(target_ot_df: pd.DataFrame, disease_id: str) -> pd.DataFrame:
+    """
+    Open Targets target entity 후보들과 disease ID를 이용해
+    association score 표를 만드는 함수.
+    """
+
+    if target_ot_df.empty:
+        return pd.DataFrame()
+
+    rows = []
+
+    for _, row in target_ot_df.iterrows():
+        candidate_term = row.get("Candidate Term", "")
+        gene_name = row.get("Gene Name", "")
+        target_id = row.get("Open Targets ID", "")
+        target_name = row.get("Name", "")
+
+        association_info = get_association_score_from_open_targets(
+            target_id=target_id,
+            disease_id=disease_id
+        )
+
+        rows.append(
+            {
+                "Candidate Term": candidate_term,
+                "Gene Name": gene_name,
+                "Open Targets Target ID": target_id,
+                "Open Targets Target Name": target_name,
+                "Open Targets Disease ID": disease_id,
+                "Association Score": association_info.get("Association Score", ""),
+                "Association Status": association_info.get("Association Status", ""),
+                "Evidence Type Scores": association_info.get("Evidence Type Scores", "")
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
 # ------------------------------------------------------------
 # Streamlit UI
 # ------------------------------------------------------------
@@ -722,8 +812,8 @@ st.info(
     available through public APIs.
 
     In this MVP version, DTSR retrieves **PubMed metadata and abstracts**, validates
-    selected candidate terms using the **UniProt public API**, and searches related
-    disease / target entities using the **Open Targets public GraphQL API**.
+    selected candidate terms using the **UniProt public API**, and searches disease-target
+    evidence using the **Open Targets public GraphQL API**.
 
     DTSR does not collect or analyze paywalled full-text papers without permission.
     """
@@ -862,15 +952,38 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                         st.markdown("### Target Entity Candidates")
                         st.dataframe(target_ot_df, use_container_width=True)
 
-                        st.caption(
-                            """
-                            Open Targets entity search is an early prototype step.
-                            The next version will use selected disease and target IDs
-                            to retrieve target-disease association evidence.
-                            """
-                        )
+                        st.subheader("7. Open Targets Association Score Prototype")
 
-                    st.subheader("7. Paper Details")
+                        disease_id = safe_get_first_disease_id(disease_ot_df)
+
+                        if not disease_id:
+                            st.warning(
+                                """
+                                No valid Open Targets disease ID was found.
+                                Association score retrieval cannot be performed.
+                                """
+                            )
+                        else:
+                            with st.spinner("Retrieving Open Targets association scores..."):
+                                association_df = build_association_table(
+                                    target_ot_df,
+                                    disease_id
+                                )
+
+                            if association_df.empty:
+                                st.warning("No association score table could be generated.")
+                            else:
+                                st.dataframe(association_df, use_container_width=True)
+
+                                st.caption(
+                                    """
+                                    Association scores are retrieved from Open Targets using the first
+                                    disease entity candidate and target entity candidates.
+                                    This is an MVP prototype and requires careful entity selection validation.
+                                    """
+                                )
+
+                    st.subheader("8. Paper Details")
 
                     for index, paper in enumerate(papers, start=1):
                         with st.expander(f"{index}. {paper['Title']}"):
@@ -885,16 +998,16 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                             else:
                                 st.warning("No abstract available through PubMed API for this record.")
 
-                    st.subheader("8. Next DTSR Development Step")
+                    st.subheader("9. Next DTSR Development Step")
 
                     st.markdown(
                         """
-                        The next development step is to retrieve disease-target association evidence
-                        using Open Targets disease and target IDs.
+                        The next development step is to improve disease and target entity selection
+                        and integrate association evidence into the DTSR scoring framework.
 
                         Future versions will integrate:
 
-                        - **Open Targets association evidence**
+                        - **Refined Open Targets association evidence**
                         - **Human Protein Atlas** for normal tissue expression and safety window
                         - **Reactome / KEGG** pathway databases for mechanism mapping
                         - **Europe PMC API** for open-access literature metadata
@@ -916,5 +1029,5 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v6: PubMed API + UniProt validation + Open Targets entity search prototype."
+    "DTSR MVP v7: PubMed API + UniProt validation + Open Targets association score prototype."
 )
