@@ -347,3 +347,47 @@ Name
 Entity Type
 Description
 ```
+
+---
+
+## 43. Preliminary DTSR Score Table
+
+The current version of DTSR includes a preliminary target prioritization score table.
+
+After retrieving PubMed metadata and abstracts, extracting candidate terms, validating selected candidates with UniProt, searching Open Targets entities, and retrieving disease-target association evidence, DTSR now calculates a preliminary MVP-level target prioritization score.
+
+This feature is designed to move DTSR from API-based evidence retrieval toward early-stage drug target prioritization.
+
+---
+
+## 44. Implemented Preliminary Scoring Features
+
+Current implemented features include:
+
+- PubMed-based literature signal calculation
+- UniProt validation signal calculation
+- Open Targets association signal calculation
+- Rule-based modality fit signal calculation
+- Evidence availability signal calculation
+- Preliminary DTSR score generation
+- Priority interpretation label
+
+Current preliminary score table includes:
+
+```text
+Candidate Term
+Gene Name
+Protein Name
+Category
+Possible Modality
+Literature Signal
+UniProt Validation
+Open Targets Association
+Modality Fit
+Evidence Availability
+Preliminary DTSR Score
+Priority Interpretation
+Association Score
+Association Status
+Evidence Type Scores
+```
