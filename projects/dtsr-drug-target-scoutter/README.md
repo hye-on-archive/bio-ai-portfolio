@@ -280,4 +280,35 @@ Association Score
 Association Status
 Evidence Type Scores
 ```
+---
 
+## 12. User-selected Open Targets Disease Entity
+
+The current version of DTSR includes a user-selected Open Targets disease entity feature.
+
+In previous versions, DTSR automatically used the first Open Targets disease entity candidate for association score retrieval.  
+However, disease names can return multiple related entities, and the first result may not always be the most accurate disease match.
+
+To improve reliability, DTSR now allows users to select the correct Open Targets disease entity before retrieving disease-target association scores.
+
+---
+
+## 13. Implemented Disease Entity Selection Features
+
+Current implemented features include:
+
+- Open Targets disease and phenotype entity search
+- Disease entity candidate table display
+- User-selectable disease entity dropdown
+- Open Targets disease ID extraction from user selection
+- Association score retrieval using the selected disease ID
+- Reduced risk of incorrect automatic disease matching
+
+The disease entity selection output includes:
+
+```text
+Open Targets ID
+Disease name
+Entity type
+Description
+```
