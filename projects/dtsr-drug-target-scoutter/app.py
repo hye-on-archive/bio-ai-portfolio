@@ -9,15 +9,12 @@ import xml.etree.ElementTree as ET
 
 # ------------------------------------------------------------
 # DTSR: Drug Target ScoutteR
-# PubMed API MVP version with candidate term extraction
-# and rule-based target classification
-#
-# This app retrieves publicly accessible PubMed metadata and abstracts
-# using NCBI E-utilities and extracts candidate biomarker / target terms
-# using a simple rule-based MVP approach.
+# MVP v5: PubMed API + candidate extraction/classification
+# + UniProt validation prototype
 #
 # Data principle:
 # - Use public metadata and abstracts
+# - Use public biological databases
 # - Do not collect or analyze paywalled full-text papers
 # ------------------------------------------------------------
 
@@ -31,6 +28,8 @@ st.set_page_config(
 
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+UNIPROT_SEARCH_URL = "https://rest.uniprot.org/uniprotkb/search"
 
 
 STOP_TERMS = {
@@ -51,9 +50,6 @@ PATHWAY_KEYWORDS = [
 ]
 
 
-# 알려진 후보 용어에 대해 타깃 유형과 가능한 모달리티를 매칭하는 규칙 사전
-# 현재는 MVP이므로 일부 대표 용어만 포함한다.
-# 향후 UniProt, Open Targets, Human Protein Atlas API로 자동 검증할 예정이다.
 KNOWN_TARGET_RULES = {
     "IL-6": {
         "category": "Cytokine / inflammatory mediator",
@@ -330,10 +326,6 @@ def extract_candidate_terms(text: str) -> list:
 def classify_candidate_term(term: str) -> dict:
     """
     추출된 후보 용어를 타깃 유형과 가능한 모달리티로 분류하는 함수.
-
-    1. 먼저 KNOWN_TARGET_RULES 사전에 있는지 확인한다.
-    2. 없으면 간단한 패턴 기반 규칙으로 추정한다.
-    3. 그래도 알 수 없으면 Unclassified로 표시한다.
     """
 
     normalized_term = term.strip()
@@ -356,7 +348,6 @@ def classify_candidate_term(term: str) -> dict:
             "Classification Note": rule["note"]
         }
 
-    # 패턴 기반 추정 규칙
     if normalized_term.startswith("IL-") or upper_term.startswith("IL"):
         return {
             "Category": "Possible cytokine / interleukin",
@@ -399,6 +390,152 @@ def classify_candidate_term(term: str) -> dict:
     }
 
 
+def get_primary_gene_name(entry: dict) -> str:
+    """
+    UniProt entry에서 대표 gene name을 추출하는 함수.
+    """
+
+    genes = entry.get("genes", [])
+
+    if not genes:
+        return ""
+
+    first_gene = genes[0]
+    gene_name = first_gene.get("geneName", {}).get("value", "")
+
+    return gene_name
+
+
+def get_recommended_protein_name(entry: dict) -> str:
+    """
+    UniProt entry에서 권장 단백질 이름을 추출하는 함수.
+    """
+
+    protein_description = entry.get("proteinDescription", {})
+
+    recommended_name = protein_description.get("recommendedName", {})
+    full_name = recommended_name.get("fullName", {})
+    protein_name = full_name.get("value", "")
+
+    if protein_name:
+        return protein_name
+
+    # recommendedName이 없는 경우 submissionNames에서 첫 번째 이름을 가져온다.
+    submission_names = protein_description.get("submissionNames", [])
+    if submission_names:
+        return submission_names[0].get("fullName", {}).get("value", "")
+
+    return ""
+
+
+def get_function_comment(entry: dict) -> str:
+    """
+    UniProt entry에서 FUNCTION comment를 추출하는 함수.
+    """
+
+    comments = entry.get("comments", [])
+
+    for comment in comments:
+        if comment.get("commentType") == "FUNCTION":
+            texts = comment.get("texts", [])
+            if texts:
+                return texts[0].get("value", "")
+
+    return ""
+
+
+def parse_uniprot_result(entry: dict) -> dict:
+    """
+    UniProt 검색 결과 한 개에서 DTSR에 필요한 정보를 추출하는 함수.
+    """
+
+    accession = entry.get("primaryAccession", "")
+    entry_name = entry.get("uniProtkbId", "")
+    organism = entry.get("organism", {}).get("scientificName", "")
+
+    gene_name = get_primary_gene_name(entry)
+    protein_name = get_recommended_protein_name(entry)
+    function = get_function_comment(entry)
+
+    uniprot_url = f"https://www.uniprot.org/uniprotkb/{accession}/entry" if accession else ""
+
+    return {
+        "UniProt Accession": accession,
+        "UniProt Entry": entry_name,
+        "Gene Name": gene_name,
+        "Protein Name": protein_name,
+        "Organism": organism,
+        "Function": function,
+        "UniProt URL": uniprot_url
+    }
+
+
+def search_uniprot_candidate(term: str) -> dict:
+    """
+    후보 용어 하나를 UniProt API로 검색하는 함수.
+
+    현재 MVP에서는 사람 단백질을 우선으로 검색한다.
+    query 설명:
+    - gene_exact: 후보 용어와 정확히 일치하는 gene name 검색
+    - organism_id:9606: Homo sapiens
+    - reviewed:true: Swiss-Prot reviewed entry 우선
+    """
+
+    clean_term = term.strip()
+
+    if not clean_term:
+        return {}
+
+    query = f'(gene_exact:{clean_term}) AND (organism_id:9606) AND (reviewed:true)'
+
+    params = {
+        "query": query,
+        "format": "json",
+        "size": 1
+    }
+
+    response = requests.get(UNIPROT_SEARCH_URL, params=params, timeout=20)
+    response.raise_for_status()
+
+    data = response.json()
+    results = data.get("results", [])
+
+    if not results:
+        # gene_exact에서 결과가 없으면 일반 keyword 검색으로 한 번 더 시도한다.
+        fallback_query = f'({clean_term}) AND (organism_id:9606) AND (reviewed:true)'
+        fallback_params = {
+            "query": fallback_query,
+            "format": "json",
+            "size": 1
+        }
+
+        fallback_response = requests.get(UNIPROT_SEARCH_URL, params=fallback_params, timeout=20)
+        fallback_response.raise_for_status()
+
+        fallback_data = fallback_response.json()
+        fallback_results = fallback_data.get("results", [])
+
+        if not fallback_results:
+            return {
+                "UniProt Match": "No reviewed human match found",
+                "UniProt Accession": "",
+                "UniProt Entry": "",
+                "Gene Name": "",
+                "Protein Name": "",
+                "Organism": "",
+                "Function": "",
+                "UniProt URL": ""
+            }
+
+        parsed = parse_uniprot_result(fallback_results[0])
+    else:
+        parsed = parse_uniprot_result(results[0])
+
+    parsed["UniProt Match"] = "Reviewed human match found"
+
+    return parsed
+
+
 def summarize_candidate_terms(papers: list) -> pd.DataFrame:
     """
     여러 논문에서 추출된 후보 용어의 등장 빈도를 계산하고,
@@ -436,6 +573,45 @@ def summarize_candidate_terms(papers: list) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def validate_candidates_with_uniprot(candidate_df: pd.DataFrame, max_candidates: int) -> pd.DataFrame:
+    """
+    후보 용어 상위 N개를 UniProt API로 검증하는 함수.
+
+    너무 많은 후보를 한 번에 검색하면 API 요청이 많아질 수 있으므로,
+    사용자가 선택한 개수만큼만 검증한다.
+    """
+
+    if candidate_df.empty:
+        return candidate_df
+
+    rows = []
+
+    selected_candidates = candidate_df.head(max_candidates)
+
+    for _, row in selected_candidates.iterrows():
+        candidate_term = row["Candidate Term"]
+
+        try:
+            uniprot_info = search_uniprot_candidate(candidate_term)
+        except requests.exceptions.RequestException:
+            uniprot_info = {
+                "UniProt Match": "UniProt request failed",
+                "UniProt Accession": "",
+                "UniProt Entry": "",
+                "Gene Name": "",
+                "Protein Name": "",
+                "Organism": "",
+                "Function": "",
+                "UniProt URL": ""
+            }
+
+        merged_row = row.to_dict()
+        merged_row.update(uniprot_info)
+        rows.append(merged_row)
+
+    return pd.DataFrame(rows)
+
+
 # ------------------------------------------------------------
 # Streamlit UI
 # ------------------------------------------------------------
@@ -458,8 +634,10 @@ st.info(
     paper metadata, abstracts, open-access full text, and public biological databases
     available through public APIs.
 
-    In this MVP version, DTSR retrieves **PubMed metadata and abstracts only**.
-    It does not collect or analyze paywalled full-text papers without permission.
+    In this MVP version, DTSR retrieves **PubMed metadata and abstracts** and validates
+    selected candidate terms using the **UniProt public API**.
+
+    DTSR does not collect or analyze paywalled full-text papers without permission.
     """
 )
 
@@ -473,12 +651,18 @@ disease_name = st.text_input(
 )
 
 max_results = st.selectbox(
-    "Number of papers to retrieve:",
+    "Number of PubMed papers to retrieve:",
     options=[5, 10, 20],
     index=0
 )
 
-if st.button("Search PubMed with DTSR"):
+max_uniprot_candidates = st.selectbox(
+    "Number of extracted candidate terms to validate with UniProt:",
+    options=[3, 5, 10],
+    index=0
+)
+
+if st.button("Search PubMed and Validate Candidates with DTSR"):
 
     if disease_name.strip() == "":
         st.warning("Please enter a disease name first.")
@@ -535,12 +719,28 @@ if st.button("Search PubMed with DTSR"):
                             """
                             Note: This classification is an early MVP heuristic.
                             Extracted terms are not validated drug targets.
-                            Future versions will validate them using UniProt, Open Targets,
-                            pathway databases, and normal tissue expression data.
                             """
                         )
 
-                    st.subheader("5. Paper Details")
+                        st.subheader("5. UniProt Validation for Top Candidate Terms")
+
+                        with st.spinner("Validating selected candidate terms using UniProt public API..."):
+                            uniprot_df = validate_candidates_with_uniprot(
+                                candidate_df,
+                                max_uniprot_candidates
+                            )
+
+                        st.dataframe(uniprot_df, use_container_width=True)
+
+                        st.caption(
+                            """
+                            UniProt validation checks whether selected candidate terms can be matched
+                            to reviewed human protein entries. This is still an early validation step
+                            and should not be interpreted as final target validation.
+                            """
+                        )
+
+                    st.subheader("6. Paper Details")
 
                     for index, paper in enumerate(papers, start=1):
                         with st.expander(f"{index}. {paper['Title']}"):
@@ -555,26 +755,25 @@ if st.button("Search PubMed with DTSR"):
                             else:
                                 st.warning("No abstract available through PubMed API for this record.")
 
-                    st.subheader("6. Next DTSR Development Step")
+                    st.subheader("7. Next DTSR Development Step")
 
                     st.markdown(
                         """
-                        The next development step is to validate extracted and classified candidate terms
-                        using public biomedical databases.
+                        The next development step is to integrate disease-target association evidence
+                        using public biomedical databases such as Open Targets.
 
                         Future versions will integrate:
 
                         - **Open Targets API** for disease-target association evidence
-                        - **UniProt API** for protein function and cellular location
-                        - **Europe PMC API** for open-access literature metadata
-                        - **OpenAlex API** for scholarly metadata and citation information
                         - **Human Protein Atlas** for normal tissue expression and safety window
                         - **Reactome / KEGG** pathway databases for mechanism mapping
+                        - **Europe PMC API** for open-access literature metadata
+                        - **OpenAlex API** for scholarly metadata and citation information
                         """
                     )
 
             except requests.exceptions.RequestException as error:
-                st.error("PubMed API request failed.")
+                st.error("Public API request failed.")
                 st.write(error)
 
             except ET.ParseError:
@@ -587,5 +786,5 @@ if st.button("Search PubMed with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v4: PubMed API search with rule-based candidate target classification and modality suggestion."
+    "DTSR MVP v5: PubMed API search + candidate classification + UniProt public API validation."
 )
