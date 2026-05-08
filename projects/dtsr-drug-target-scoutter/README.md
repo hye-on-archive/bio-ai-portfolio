@@ -161,7 +161,7 @@ DTSR Score = sum of 7 criteria / 35
 
 ---
 
-## 19. UniProt Validation Status
+## 6. UniProt Validation Status
 
 The current version of DTSR includes a UniProt public API validation feature.
 
@@ -171,7 +171,7 @@ This step helps DTSR check whether extracted candidate terms can be matched to r
 
 ---
 
-## 20. Implemented UniProt Validation Features
+## 7. Implemented UniProt Validation Features
 
 Current implemented features include:
 
