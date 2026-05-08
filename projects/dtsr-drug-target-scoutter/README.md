@@ -137,7 +137,7 @@ Examples:
 
 ---
 
-## 5. DTSR Scoring System
+## 8. DTSR Scoring System
 
 DTSR uses a simple prototype scoring system.
 
@@ -157,3 +157,36 @@ Total score:
 
 ```text
 DTSR Score = sum of 7 criteria / 35
+
+---
+
+## 8. Current Implementation Status
+
+The current version of DTSR is an MVP-stage Streamlit prototype.
+
+At this stage, DTSR does not yet perform real-time PubMed API search.  
+Instead, it provides the first working interface and documents the core analysis framework before public API integration.
+
+Current implemented components:
+
+- Streamlit-based search strategy UI
+- Disease name input field
+- PubMed-style search query generation
+- Public API-based data access principle notice
+- Planned public API source list
+- DTSR scoring framework documentation
+- Sample target scouting report example
+
+---
+
+## 9. Current Project Structure
+
+```text
+dtsr-drug-target-scoutter/
+├── README.md
+├── app.py
+├── requirements.txt
+├── docs/
+│   └── scoring_framework.md
+└── examples/
+    └── sample_report.md
