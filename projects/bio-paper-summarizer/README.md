@@ -27,21 +27,13 @@ This project aims to use generative AI to summarize biomedical papers into clear
 Planned output sections include:
 
 - One-sentence summary
-
 - Research background
-
 - Research purpose
-
 - Experimental methods
-
 - Key results
-
 - Limitations
-
 - Future research ideas
-
 - Beginner-friendly explanation
-
 - Important keywords
 
 ---
@@ -49,33 +41,22 @@ Planned output sections include:
 ## 4. Target Users
 
 - Biology students
-
 - Biomedical researchers
-
 - Pharmaceutical and biotechnology job applicants
-
 - Beginners studying biomedical AI
-
 - People who need to review biomedical papers efficiently
 
 ---
-
-
 
 ## 5. Current Features
 
 Current implemented features:
 
 - Basic Streamlit app interface
-
 - Biomedical abstract input box
-
 - Generate Summary button
-
 - Structured summary output layout
-
 - Prompt template for paper summarization
-
 - Sample input and output documentation
 
 Current status: Prototype UI / Planning stage
@@ -85,52 +66,11 @@ Current status: Prototype UI / Planning stage
 ## 6. Project Structure
 
 ```text
-
 bio-paper-summarizer/
-
 ├── README.md
-
 ├── app.py
-
 ├── requirements.txt
-
 ├── prompts/
-
 │   └── paper_summary_prompt.md
-
 └── examples/
-
     └── sample_output.md
-
-------
-
-## 7. Planned Tech Stack
-
-- Python
-- Streamlit
-- Prompt Engineering
-- Generative AI API
-- GitHub
-
----
-
-## 8. Current Status
-
-Status: Planning / Prototype
-
-Current progress:
-
-- Project idea defined
-- Problem and target users organized
-- Feature list drafted
-- README documentation created
-
----
-
-## 9. Next Steps
-
-- Create a simple Streamlit app
-- Design the first prompt template
-- Test the tool with sample biomedical abstracts
-- Add example outputs
-- Add screenshots of the prototype
