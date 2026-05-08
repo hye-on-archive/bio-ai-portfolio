@@ -1,18 +1,23 @@
+import requests
+import pandas as pd
 import streamlit as st
+import xml.etree.ElementTree as ET
+
 
 # ------------------------------------------------------------
 # DTSR: Drug Target ScoutteR
-# First MVP UI prototype
+# PubMed API MVP version
 #
-# This app is designed to become a public API-based
-# drug target scouting platform.
+# This app retrieves publicly accessible PubMed metadata and abstracts
+# using NCBI E-utilities.
+#
+# Data principle:
+# - Use public metadata and abstracts
+# - Do not collect or analyze paywalled full-text papers
 # ------------------------------------------------------------
 
 
 # 페이지 기본 설정
-# page_title: 브라우저 탭에 표시되는 이름
-# page_icon: 브라우저 탭과 앱 상단에 표시되는 아이콘
-# layout="wide": 화면을 넓게 사용
 st.set_page_config(
     page_title="DTSR: Drug Target ScoutteR",
     page_icon="🧭",
@@ -20,11 +25,146 @@ st.set_page_config(
 )
 
 
-# 앱 제목
+# PubMed E-utilities API 주소
+# ESearch: 검색어를 넣으면 PMID 목록을 가져오는 API
+# EFetch: PMID 목록을 넣으면 논문 상세정보를 가져오는 API
+PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
+PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+
+
+def build_pubmed_query(disease_name: str) -> str:
+    """
+    사용자가 입력한 질환명을 PubMed 검색용 query로 바꾸는 함수.
+
+    예:
+    Alzheimer's disease 입력
+    → ("Alzheimer's disease"[Title/Abstract]) AND (biomarker OR "drug target" OR protein OR pathway)
+    """
+
+    disease_name = disease_name.strip()
+
+    query = (
+        f'("{disease_name}"[Title/Abstract]) '
+        f'AND (biomarker OR "drug target" OR protein OR pathway OR mechanism)'
+    )
+
+    return query
+
+
+def search_pubmed_ids(query: str, max_results: int) -> list:
+    """
+    PubMed ESearch API를 사용해 검색어에 해당하는 PMID 목록을 가져오는 함수.
+
+    PMID는 PubMed 논문의 고유 ID야.
+    """
+
+    params = {
+        "db": "pubmed",
+        "term": query,
+        "retmode": "json",
+        "retmax": max_results,
+        "sort": "relevance"
+    }
+
+    response = requests.get(PUBMED_ESEARCH_URL, params=params, timeout=20)
+    response.raise_for_status()
+
+    data = response.json()
+
+    pmids = data.get("esearchresult", {}).get("idlist", [])
+
+    return pmids
+
+
+def get_text_from_element(element) -> str:
+    """
+    XML element 안의 모든 텍스트를 하나로 합치는 보조 함수.
+
+    PubMed 초록은 여러 조각으로 나뉘어 있을 수 있어서,
+    이 함수를 통해 안전하게 합쳐준다.
+    """
+
+    if element is None:
+        return ""
+
+    return " ".join(element.itertext()).strip()
+
+
+def extract_article_info(article) -> dict:
+    """
+    PubMed XML에서 논문 제목, 저널, 연도, 초록, PMID를 추출하는 함수.
+    """
+
+    # PMID 추출
+    pmid_element = article.find(".//PMID")
+    pmid = pmid_element.text if pmid_element is not None else ""
+
+    # 논문 제목 추출
+    title_element = article.find(".//ArticleTitle")
+    title = get_text_from_element(title_element)
+
+    # 저널명 추출
+    journal_element = article.find(".//Journal/Title")
+    journal = get_text_from_element(journal_element)
+
+    # 출판연도 추출
+    year_element = article.find(".//JournalIssue/PubDate/Year")
+    if year_element is not None:
+        year = year_element.text
+    else:
+        medline_date_element = article.find(".//JournalIssue/PubDate/MedlineDate")
+        year = medline_date_element.text if medline_date_element is not None else ""
+
+    # 초록 추출
+    abstract_elements = article.findall(".//Abstract/AbstractText")
+    abstract_parts = [get_text_from_element(element) for element in abstract_elements]
+    abstract = " ".join([part for part in abstract_parts if part]).strip()
+
+    # PubMed 링크 생성
+    pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
+
+    return {
+        "PMID": pmid,
+        "Title": title,
+        "Journal": journal,
+        "Year": year,
+        "Abstract": abstract,
+        "PubMed URL": pubmed_url
+    }
+
+
+def fetch_pubmed_details(pmids: list) -> list:
+    """
+    PMID 목록을 PubMed EFetch API에 보내서 논문 상세정보를 가져오는 함수.
+    """
+
+    if not pmids:
+        return []
+
+    params = {
+        "db": "pubmed",
+        "id": ",".join(pmids),
+        "retmode": "xml"
+    }
+
+    response = requests.get(PUBMED_EFETCH_URL, params=params, timeout=30)
+    response.raise_for_status()
+
+    root = ET.fromstring(response.content)
+
+    articles = root.findall(".//PubmedArticle")
+
+    results = [extract_article_info(article) for article in articles]
+
+    return results
+
+
+# ------------------------------------------------------------
+# Streamlit UI
+# ------------------------------------------------------------
+
 st.title("🧭 DTSR: Drug Target ScoutteR")
 
-
-# 앱 소개 문구
 st.write(
     """
     **DTSR (Drug Target ScoutteR)** is a Bio-AI research platform concept
@@ -33,8 +173,6 @@ st.write(
     """
 )
 
-
-# 공개 API 기반 분석 원칙 안내
 st.info(
     """
     **Data Access Principle**
@@ -43,123 +181,104 @@ st.info(
     paper metadata, abstracts, open-access full text, and public biological databases
     available through public APIs.
 
-    DTSR does not collect or analyze paywalled full-text papers without permission.
+    In this MVP version, DTSR retrieves **PubMed metadata and abstracts only**.
+    It does not collect or analyze paywalled full-text papers without permission.
     """
 )
 
-
 st.divider()
 
+st.header("1. Disease-based PubMed Search")
 
-# 사용자 입력 섹션
-st.header("1. Disease-based Search")
-
-# 사용자가 질환명을 입력하는 칸
-# 입력된 질환명은 disease_name 변수에 저장됨
 disease_name = st.text_input(
     "Enter a disease name:",
     placeholder="Example: Alzheimer's disease, rheumatoid arthritis, breast cancer"
 )
 
-
-# 검색할 논문 개수 선택
-# 사용자가 5, 10, 20, 50 중 하나를 선택할 수 있음
 max_results = st.selectbox(
     "Number of papers to retrieve:",
-    options=[5, 10, 20, 50],
-    index=1
+    options=[5, 10, 20],
+    index=0
 )
 
+if st.button("Search PubMed with DTSR"):
 
-# 검색 버튼
-# 사용자가 버튼을 누르면 아래 코드가 실행됨
-if st.button("Generate DTSR Search Strategy"):
-
-    # 질환명이 비어 있으면 경고 메시지 출력
     if disease_name.strip() == "":
         st.warning("Please enter a disease name first.")
 
-    # 질환명이 입력되어 있으면 검색 전략 생성
     else:
-        st.subheader("2. Generated Search Strategy")
+        pubmed_query = build_pubmed_query(disease_name)
 
-        # PubMed 검색에 사용할 기본 query 생성
-        pubmed_query = f'("{disease_name}"[Title/Abstract]) AND (biomarker OR "drug target" OR protein OR pathway)'
-
-        st.markdown("### PubMed Search Query")
+        st.subheader("2. PubMed Search Query")
         st.code(pubmed_query, language="text")
 
-        st.write(
-            """
-            This query is designed to search for biomedical papers related to the
-            disease name, biomarkers, drug targets, proteins, and pathways.
-            """
-        )
+        with st.spinner("Searching PubMed via public API..."):
+            try:
+                pmids = search_pubmed_ids(pubmed_query, max_results)
+                papers = fetch_pubmed_details(pmids)
 
-        st.markdown("### Planned Public API Sources")
+                if not papers:
+                    st.warning("No PubMed results found. Try another disease name or broader keyword.")
 
-        st.write(
-            """
-            In future versions, DTSR will retrieve and integrate data from:
-            """
-        )
+                else:
+                    st.success(f"Retrieved {len(papers)} PubMed records using public API.")
 
-        st.markdown(
-            """
-            - **PubMed API**: paper titles, abstracts, PMID, journal, publication year
-            - **Europe PMC API**: open-access full text availability and metadata
-            - **OpenAlex API**: citation count, open-access status, scholarly metadata
-            - **Crossref API**: DOI, journal, publisher, license metadata
-            - **UniProt API**: protein function, gene name, subcellular location
-            - **Open Targets API**: disease-target association evidence
-            - **Reactome / KEGG**: biological pathway information
-            - **Human Protein Atlas**: normal tissue expression and safety window
-            """
-        )
+                    st.subheader("3. Retrieved Paper Metadata and Abstracts")
 
-        st.subheader("3. Planned DTSR Analysis Flow")
+                    df = pd.DataFrame(papers)
 
-        st.markdown(
-            """
-            After retrieving public data, DTSR will analyze the disease and target candidates
-            using the following framework:
+                    # 표에서는 초록 전체가 너무 길기 때문에 일부 열만 먼저 보여준다.
+                    st.dataframe(
+                        df[["PMID", "Title", "Journal", "Year", "PubMed URL"]],
+                        use_container_width=True
+                    )
 
-            1. **Disease mechanism understanding**
-            2. **Candidate biomarker / protein / target extraction**
-            3. **Literature evidence organization**
-            4. **Targetability evaluation**
-            5. **Safety window assessment**
-            6. **Modality matching**
-               - ADC
-               - CAR-T
-               - Bispecific antibody
-               - Monoclonal antibody
-               - Small molecule inhibitor
-               - PROTAC / TPD
-               - RNA therapy
-            7. **DTSR target score calculation**
-            8. **Research report generation**
-            """
-        )
+                    st.subheader("4. Paper Details")
 
-        st.subheader("4. Current MVP Status")
+                    for index, paper in enumerate(papers, start=1):
+                        with st.expander(f"{index}. {paper['Title']}"):
+                            st.write(f"**PMID:** {paper['PMID']}")
+                            st.write(f"**Journal:** {paper['Journal']}")
+                            st.write(f"**Year:** {paper['Year']}")
+                            st.write(f"**PubMed URL:** {paper['PubMed URL']}")
 
-        st.success(
-            f"""
-            Search strategy generated for: **{disease_name}**
+                            if paper["Abstract"]:
+                                st.markdown("**Abstract:**")
+                                st.write(paper["Abstract"])
+                            else:
+                                st.warning("No abstract available through PubMed API for this record.")
 
-            Planned number of papers to retrieve: **{max_results}**
+                    st.subheader("5. Next DTSR Development Step")
 
-            Current version: Search strategy prototype  
-            Next version: PubMed API connection
-            """
-        )
+                    st.markdown(
+                        """
+                        The next development step is to extract candidate biomarkers,
+                        proteins, genes, and pathways from the retrieved abstracts.
 
+                        Future versions will integrate additional public APIs such as:
+
+                        - Open Targets API
+                        - UniProt API
+                        - Europe PMC API
+                        - OpenAlex API
+                        - Human Protein Atlas
+                        - Reactome / KEGG pathway databases
+                        """
+                    )
+
+            except requests.exceptions.RequestException as error:
+                st.error("PubMed API request failed.")
+                st.write(error)
+
+            except ET.ParseError:
+                st.error("Failed to parse PubMed XML response.")
+
+            except Exception as error:
+                st.error("An unexpected error occurred.")
+                st.write(error)
 
 st.divider()
 
-
-# 하단 설명
 st.caption(
-    "DTSR MVP v1: Search strategy UI prototype. PubMed API integration will be added in the next development step."
+    "DTSR MVP v2: PubMed API search prototype using publicly accessible metadata and abstracts."
 )
