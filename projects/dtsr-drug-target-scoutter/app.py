@@ -875,6 +875,221 @@ def build_association_table(target_ot_df: pd.DataFrame, disease_id: str) -> pd.D
 
     return pd.DataFrame(rows)
 
+def convert_association_score_to_points(score_value) -> int:
+    """
+    Open Targets association score를 1~5점으로 변환하는 함수.
+
+    Open Targets score는 보통 0~1 범위의 값으로 해석할 수 있다.
+    여기서는 MVP 수준의 단순 변환 규칙을 사용한다.
+    """
+
+    try:
+        score = float(score_value)
+    except (TypeError, ValueError):
+        return 1
+
+    if score >= 0.8:
+        return 5
+    elif score >= 0.6:
+        return 4
+    elif score >= 0.4:
+        return 3
+    elif score > 0:
+        return 2
+    else:
+        return 1
+
+
+def convert_frequency_to_points(frequency_value) -> int:
+    """
+    후보 용어의 문헌 등장 빈도를 1~5점으로 변환하는 함수.
+    """
+
+    try:
+        frequency = int(frequency_value)
+    except (TypeError, ValueError):
+        return 1
+
+    if frequency >= 10:
+        return 5
+    elif frequency >= 6:
+        return 4
+    elif frequency >= 3:
+        return 3
+    elif frequency >= 1:
+        return 2
+    else:
+        return 1
+
+
+def convert_uniprot_match_to_points(uniprot_match: str) -> int:
+    """
+    UniProt 검증 결과를 1~5점으로 변환하는 함수.
+    """
+
+    if uniprot_match == "Reviewed human match found":
+        return 5
+
+    if uniprot_match == "No reviewed human match found":
+        return 2
+
+    if uniprot_match == "UniProt request failed":
+        return 1
+
+    return 1
+
+
+def convert_modality_to_points(possible_modality: str) -> int:
+    """
+    모달리티 제안 여부를 1~5점으로 변환하는 함수.
+
+    현재는 MVP 수준의 단순 규칙이다.
+    구체적인 모달리티가 제안되어 있으면 높은 점수를 준다.
+    """
+
+    if not possible_modality:
+        return 1
+
+    if possible_modality == "Requires database validation":
+        return 1
+
+    strong_keywords = [
+        "Small molecule",
+        "Monoclonal antibody",
+        "ADC",
+        "CAR-T",
+        "bispecific",
+        "PROTAC",
+        "RNA",
+        "Neutralizing antibody",
+        "PARP inhibitor",
+        "Radioligand"
+    ]
+
+    for keyword in strong_keywords:
+        if keyword.lower() in possible_modality.lower():
+            return 4
+
+    return 3
+
+
+def convert_evidence_availability_to_points(association_status: str, evidence_type_scores: str) -> int:
+    """
+    Open Targets association status와 evidence type score 존재 여부를 1~5점으로 변환하는 함수.
+    """
+
+    if association_status == "Association found" and evidence_type_scores:
+        return 5
+
+    if association_status == "Association found":
+        return 4
+
+    if association_status == "No association found":
+        return 2
+
+    if "failed" in association_status.lower():
+        return 1
+
+    return 1
+
+
+def interpret_preliminary_score(total_score: int) -> str:
+    """
+    Preliminary DTSR Score를 해석하는 함수.
+    """
+
+    if total_score >= 21:
+        return "High-priority candidate"
+    elif total_score >= 16:
+        return "Promising candidate"
+    elif total_score >= 11:
+        return "Exploratory candidate"
+    else:
+        return "Low-priority or requires further validation"
+
+
+def build_preliminary_dtsr_score_table(
+    uniprot_df: pd.DataFrame,
+    selected_target_id: str,
+    association_info: dict
+) -> pd.DataFrame:
+    """
+    선택된 target entity에 대해 Preliminary DTSR Score를 계산하는 함수.
+
+    현재 MVP에서는 선택된 Open Targets target ID와 매칭되는 후보 1개를 찾아
+    PubMed frequency, UniProt validation, Open Targets association score,
+    modality fit, evidence availability를 기반으로 예비 점수를 만든다.
+    """
+
+    if uniprot_df.empty:
+        return pd.DataFrame()
+
+    matched_row = None
+
+    for _, row in uniprot_df.iterrows():
+        # 현재 selected_target_id는 Open Targets ID이고,
+        # uniprot_df에는 Open Targets ID가 없기 때문에
+        # MVP에서는 사용자가 선택한 target 후보와 별도로 첫 번째 유효 후보를 사용한다.
+        if row.get("UniProt Match", "") == "Reviewed human match found":
+            matched_row = row
+            break
+
+    if matched_row is None:
+        matched_row = uniprot_df.iloc[0]
+
+    candidate_term = matched_row.get("Candidate Term", "")
+    frequency = matched_row.get("Frequency", 0)
+    category = matched_row.get("Category", "")
+    possible_modality = matched_row.get("Possible Modality", "")
+    uniprot_match = matched_row.get("UniProt Match", "")
+    gene_name = matched_row.get("Gene Name", "")
+    protein_name = matched_row.get("Protein Name", "")
+
+    association_score = association_info.get("Association Score", "")
+    association_status = association_info.get("Association Status", "")
+    evidence_type_scores = association_info.get("Evidence Type Scores", "")
+
+    literature_points = convert_frequency_to_points(frequency)
+    uniprot_points = convert_uniprot_match_to_points(uniprot_match)
+    association_points = convert_association_score_to_points(association_score)
+    modality_points = convert_modality_to_points(possible_modality)
+    evidence_points = convert_evidence_availability_to_points(
+        association_status,
+        evidence_type_scores
+    )
+
+    total_score = (
+        literature_points
+        + uniprot_points
+        + association_points
+        + modality_points
+        + evidence_points
+    )
+
+    interpretation = interpret_preliminary_score(total_score)
+
+    rows = [
+        {
+            "Candidate Term": candidate_term,
+            "Gene Name": gene_name,
+            "Protein Name": protein_name,
+            "Category": category,
+            "Possible Modality": possible_modality,
+            "Literature Signal": literature_points,
+            "UniProt Validation": uniprot_points,
+            "Open Targets Association": association_points,
+            "Modality Fit": modality_points,
+            "Evidence Availability": evidence_points,
+            "Preliminary DTSR Score": f"{total_score} / 25",
+            "Priority Interpretation": interpretation,
+            "Association Score": association_score,
+            "Association Status": association_status,
+            "Evidence Type Scores": evidence_type_scores
+        }
+    ]
+
+    return pd.DataFrame(rows)
+
 
 # ------------------------------------------------------------
 # Streamlit UI
@@ -1103,6 +1318,27 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                                 )
 
                                 st.dataframe(selected_association_df, use_container_width=True)
+                                st.subheader("8. Preliminary DTSR Score Table")
+
+                                preliminary_score_df = build_preliminary_dtsr_score_table(
+                                    uniprot_df=uniprot_df,
+                                    selected_target_id=selected_target_id,
+                                    association_info=association_info
+                                )
+
+                                if preliminary_score_df.empty:
+                                    st.warning("Preliminary DTSR score table could not be generated.")
+                                else:
+                                    st.dataframe(preliminary_score_df, use_container_width=True)
+
+                                    st.caption(
+                                        """
+                                        Preliminary DTSR Score is an MVP-level prioritization score.
+                                        It uses available signals from PubMed term frequency, UniProt validation,
+                                        Open Targets association score, modality fit, and evidence availability.
+                                        This score should not be interpreted as a final drug development decision.
+                                        """
+                                    )
 
                                 st.caption(
                                     """
@@ -1112,7 +1348,7 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                                     """
                                 )
                  
-                    st.subheader("8. Paper Details")
+                    st.subheader("9. Paper Details")
 
                     for index, paper in enumerate(papers, start=1):
                         with st.expander(f"{index}. {paper['Title']}"):
@@ -1127,7 +1363,7 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                             else:
                                 st.warning("No abstract available through PubMed API for this record.")
 
-                    st.subheader("9. Next DTSR Development Step")
+                    st.subheader("10. Next DTSR Development Step")
 
                     st.markdown(
                         """
@@ -1158,5 +1394,5 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v9: PubMed API + UniProt validation + user-selected Open Targets disease and target association scoring."
+    "DTSR MVP v10: PubMed API + UniProt validation + Open Targets association scoring + preliminary DTSR score table."
 )
