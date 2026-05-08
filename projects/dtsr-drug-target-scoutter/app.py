@@ -1089,7 +1089,23 @@ def build_preliminary_dtsr_score_table(
     ]
 
     return pd.DataFrame(rows)
+    
+def generate_hpa_url(ensembl_gene_id: str) -> str:
+    """
+    Ensembl gene ID를 이용해 Human Protein Atlas entry URL을 생성하는 함수.
 
+    예:
+    ENSG00000136244
+    → https://www.proteinatlas.org/ENSG00000136244
+    """
+
+    if not ensembl_gene_id:
+        return ""
+
+    if not ensembl_gene_id.startswith("ENSG"):
+        return ""
+
+    return f"https://www.proteinatlas.org/{ensembl_gene_id}"
 
 # ------------------------------------------------------------
 # Streamlit UI
@@ -1318,7 +1334,36 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                                 )
 
                                 st.dataframe(selected_association_df, use_container_width=True)
-                                st.subheader("8. Preliminary DTSR Score Table")
+                                st.subheader("8. Human Protein Atlas Safety Window Link")
+
+                                hpa_url = generate_hpa_url(selected_target_id)
+
+                                if hpa_url:
+                                    st.write(
+                                        """
+                                        Human Protein Atlas can be used to review normal tissue expression
+                                        and support early safety window assessment.
+                                        """
+                                    )
+
+                                    st.markdown(f"[Open Human Protein Atlas entry]({hpa_url})")
+
+                                    st.caption(
+                                        """
+                                        This link is generated from the selected Open Targets target ID.
+                                        HPA-based interpretation is not yet automatically calculated in this MVP.
+                                        Future versions will parse normal tissue expression data and convert it
+                                        into a safety window signal.
+                                        """
+                                    )
+                                else:
+                                    st.warning(
+                                        """
+                                        Human Protein Atlas link could not be generated.
+                                        The selected target ID may not be an Ensembl gene ID.
+                                        """
+                                    )
+                                st.subheader("9. Preliminary DTSR Score Table")
 
                                 preliminary_score_df = build_preliminary_dtsr_score_table(
                                     uniprot_df=uniprot_df,
@@ -1348,7 +1393,7 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                                     """
                                 )
                  
-                    st.subheader("9. Paper Details")
+                    st.subheader("10. Paper Details")
 
                     for index, paper in enumerate(papers, start=1):
                         with st.expander(f"{index}. {paper['Title']}"):
@@ -1363,7 +1408,7 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
                             else:
                                 st.warning("No abstract available through PubMed API for this record.")
 
-                    st.subheader("10. Next DTSR Development Step")
+                    st.subheader("11. Next DTSR Development Step")
 
                     st.markdown(
                         """
@@ -1394,5 +1439,5 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v10: PubMed API + UniProt validation + Open Targets association scoring + preliminary DTSR score table."
+    "DTSR MVP v11: PubMed API + UniProt validation + Open Targets association scoring + HPA safety window link + preliminary DTSR score table."
 )
