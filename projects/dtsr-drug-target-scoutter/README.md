@@ -312,3 +312,38 @@ Disease name
 Entity type
 Description
 ```
+
+---
+
+## 14. User-selected Open Targets Target Entity
+
+The current version of DTSR includes a user-selected Open Targets target entity feature.
+
+In previous versions, DTSR automatically used the first Open Targets target entity candidate for association score retrieval.  
+However, candidate terms can map to multiple possible targets, especially when the extracted term is a short abbreviation, protein family name, or pathway-level term.
+
+To improve reliability, DTSR now allows users to select the correct Open Targets target entity before retrieving disease-target association scores.
+
+---
+
+## 15. Implemented Target Entity Selection Features
+
+Current implemented features include:
+
+- Open Targets target entity search using UniProt-validated gene names
+- Target entity candidate table display
+- User-selectable target entity dropdown
+- Open Targets target ID extraction from user selection
+- Association score retrieval using both selected disease ID and selected target ID
+- Reduced risk of incorrect automatic target matching
+
+The target entity selection output includes:
+
+```text
+Candidate Term
+Gene Name
+Open Targets ID
+Name
+Entity Type
+Description
+```
