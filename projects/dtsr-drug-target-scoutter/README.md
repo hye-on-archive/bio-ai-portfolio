@@ -350,7 +350,7 @@ Description
 
 ---
 
-## 43. Preliminary DTSR Score Table
+## 16. Preliminary DTSR Score Table
 
 The current version of DTSR includes a preliminary target prioritization score table.
 
@@ -360,7 +360,7 @@ This feature is designed to move DTSR from API-based evidence retrieval toward e
 
 ---
 
-## 44. Implemented Preliminary Scoring Features
+## 17. Implemented Preliminary Scoring Features
 
 Current implemented features include:
 
@@ -391,3 +391,33 @@ Association Score
 Association Status
 Evidence Type Scores
 ```
+
+---
+
+## 18. Human Protein Atlas Safety Window Link
+
+The current version of DTSR includes a Human Protein Atlas link generation feature.
+
+After the user selects an Open Targets target entity, DTSR uses the selected Open Targets target ID to generate a Human Protein Atlas entry link when the target ID is available as an Ensembl gene ID.
+
+This feature prepares DTSR for future normal tissue expression-based safety window evaluation.
+
+---
+
+## 19. Implemented HPA Link Features
+
+Current implemented features include:
+
+- Selected Open Targets target ID handling
+- Ensembl gene ID-based HPA URL generation
+- Human Protein Atlas entry link display
+- Safety window review preparation
+- Clear notice that HPA expression interpretation is not yet automated
+
+Example:
+
+```text
+Selected Target ID: ENSG00000136244
+
+Generated HPA URL:
+https://www.proteinatlas.org/ENSG00000136244
