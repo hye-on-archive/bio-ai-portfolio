@@ -190,3 +190,62 @@ dtsr-drug-target-scoutter/
 │   └── scoring_framework.md
 └── examples/
     └── sample_report.md
+---
+
+## 10. PubMed API Integration Status
+
+The current version of DTSR includes a working PubMed API-based search prototype.
+
+Users can enter a disease name, and DTSR retrieves publicly accessible PubMed records related to biomarkers, drug targets, proteins, pathways, and disease mechanisms.
+
+### Implemented PubMed API Features
+
+Current implemented features include:
+
+- Disease name input
+- PubMed search query generation
+- PubMed ESearch API integration
+- PubMed EFetch API integration
+- PMID retrieval
+- Paper title retrieval
+- Journal name retrieval
+- Publication year retrieval
+- Abstract retrieval when available
+- PubMed URL generation
+- Table-based result display
+- Expandable paper detail view
+
+---
+
+## 11. Current Data Access Scope
+
+The current DTSR MVP uses PubMed public API access.
+
+DTSR currently retrieves:
+
+- Paper metadata
+- PMID
+- Paper title
+- Journal name
+- Publication year
+- Abstract when available
+- PubMed URL
+
+DTSR currently does not retrieve:
+
+- Paywalled full-text papers
+- Publisher PDF files
+- Restricted supplementary files
+- Non-public licensed content
+- Journal Impact Factor data
+
+This project follows the principle that DTSR should analyze publicly accessible metadata, abstracts, open-access full text when legally available, and public biological databases.
+
+---
+
+## 12. Current MVP Version
+
+Current version:
+
+```text
+DTSR MVP v2: PubMed API Search Prototype
