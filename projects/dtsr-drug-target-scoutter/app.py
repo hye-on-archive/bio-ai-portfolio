@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 # ------------------------------------------------------------
 # DTSR: Drug Target ScoutteR
 # PubMed API MVP version with candidate term extraction
+# and rule-based target classification
 #
 # This app retrieves publicly accessible PubMed metadata and abstracts
 # using NCBI E-utilities and extracts candidate biomarker / target terms
@@ -21,7 +22,6 @@ import xml.etree.ElementTree as ET
 # ------------------------------------------------------------
 
 
-# 페이지 기본 설정
 st.set_page_config(
     page_title="DTSR: Drug Target ScoutteR",
     page_icon="🧭",
@@ -29,16 +29,10 @@ st.set_page_config(
 )
 
 
-# PubMed E-utilities API 주소
-# ESearch: 검색어를 넣으면 PMID 목록을 가져오는 API
-# EFetch: PMID 목록을 넣으면 논문 상세정보를 가져오는 API
 PUBMED_ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
 PUBMED_EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
 
 
-# 후보 용어 추출에서 제외할 일반 단어 목록
-# 논문 초록에는 DNA, RNA처럼 의미 있는 용어도 있지만,
-# 너무 일반적인 단어는 타깃 후보로 보기 어렵기 때문에 제외한다.
 STOP_TERMS = {
     "DNA", "RNA", "mRNA", "miRNA", "PCR", "ELISA", "PBS",
     "USA", "UK", "CI", "HR", "OR", "RR", "SD", "SE",
@@ -48,8 +42,6 @@ STOP_TERMS = {
 }
 
 
-# pathway 또는 병리기전 관련 키워드
-# 이 목록은 후보 타깃 자체라기보다, 질환의 병리기전을 해석하는 데 도움을 주는 키워드다.
 PATHWAY_KEYWORDS = [
     "PI3K", "AKT", "MAPK", "ERK", "JAK", "STAT",
     "NF-kB", "WNT", "NOTCH", "TGF-beta", "mTOR",
@@ -59,13 +51,141 @@ PATHWAY_KEYWORDS = [
 ]
 
 
+# 알려진 후보 용어에 대해 타깃 유형과 가능한 모달리티를 매칭하는 규칙 사전
+# 현재는 MVP이므로 일부 대표 용어만 포함한다.
+# 향후 UniProt, Open Targets, Human Protein Atlas API로 자동 검증할 예정이다.
+KNOWN_TARGET_RULES = {
+    "IL-6": {
+        "category": "Cytokine / inflammatory mediator",
+        "modality": "Neutralizing antibody / IL-6R blockade",
+        "note": "Inflammatory cytokine involved in immune and inflammatory signaling."
+    },
+    "IL6": {
+        "category": "Cytokine / inflammatory mediator",
+        "modality": "Neutralizing antibody / IL-6R blockade",
+        "note": "Inflammatory cytokine involved in immune and inflammatory signaling."
+    },
+    "TNF": {
+        "category": "Cytokine / inflammatory mediator",
+        "modality": "Neutralizing antibody / soluble receptor",
+        "note": "Major inflammatory cytokine and clinically validated therapeutic target."
+    },
+    "TNF-alpha": {
+        "category": "Cytokine / inflammatory mediator",
+        "modality": "Neutralizing antibody / soluble receptor",
+        "note": "Major inflammatory cytokine and clinically validated therapeutic target."
+    },
+    "JAK": {
+        "category": "Intracellular kinase / signaling node",
+        "modality": "Small molecule inhibitor",
+        "note": "Kinase family involved in cytokine signaling."
+    },
+    "JAK1": {
+        "category": "Intracellular kinase",
+        "modality": "Small molecule inhibitor / JAK inhibitor",
+        "note": "Drug target class with established small molecule inhibitor modality."
+    },
+    "JAK2": {
+        "category": "Intracellular kinase",
+        "modality": "Small molecule inhibitor / JAK inhibitor",
+        "note": "Drug target class with established small molecule inhibitor modality."
+    },
+    "STAT": {
+        "category": "Transcription factor / signaling mediator",
+        "modality": "Indirect targeting / pathway modulation",
+        "note": "Important signaling mediator but direct druggability may be challenging."
+    },
+    "EGFR": {
+        "category": "Receptor / cell-surface protein",
+        "modality": "Small molecule inhibitor / monoclonal antibody / ADC",
+        "note": "Cell-surface receptor with established drug development precedent."
+    },
+    "HER2": {
+        "category": "Receptor / cell-surface antigen",
+        "modality": "Monoclonal antibody / ADC / bispecific antibody",
+        "note": "Clinically validated cell-surface oncology target."
+    },
+    "ERBB2": {
+        "category": "Receptor / cell-surface antigen",
+        "modality": "Monoclonal antibody / ADC / bispecific antibody",
+        "note": "Gene symbol for HER2; clinically validated oncology target."
+    },
+    "PD-L1": {
+        "category": "Immune checkpoint ligand / cell-surface protein",
+        "modality": "Immune checkpoint inhibitor / bispecific antibody",
+        "note": "Immune checkpoint pathway target."
+    },
+    "PD1": {
+        "category": "Immune checkpoint receptor",
+        "modality": "Immune checkpoint inhibitor",
+        "note": "T-cell immune checkpoint receptor."
+    },
+    "PD-1": {
+        "category": "Immune checkpoint receptor",
+        "modality": "Immune checkpoint inhibitor",
+        "note": "T-cell immune checkpoint receptor."
+    },
+    "CTLA4": {
+        "category": "Immune checkpoint receptor",
+        "modality": "Immune checkpoint inhibitor",
+        "note": "Immune checkpoint receptor involved in T-cell regulation."
+    },
+    "TP53": {
+        "category": "Tumor suppressor / transcription factor",
+        "modality": "Restoration strategy / synthetic lethality / indirect targeting",
+        "note": "Major tumor suppressor; direct targeting is challenging."
+    },
+    "BRCA1": {
+        "category": "DNA repair gene",
+        "modality": "Synthetic lethality / PARP inhibitor strategy",
+        "note": "DNA repair deficiency can create therapeutic vulnerability."
+    },
+    "BRCA2": {
+        "category": "DNA repair gene",
+        "modality": "Synthetic lethality / PARP inhibitor strategy",
+        "note": "DNA repair deficiency can create therapeutic vulnerability."
+    },
+    "PARP": {
+        "category": "DNA repair enzyme",
+        "modality": "Small molecule inhibitor",
+        "note": "DNA repair enzyme with established inhibitor strategy."
+    },
+    "BACE1": {
+        "category": "Protease enzyme",
+        "modality": "Small molecule inhibitor",
+        "note": "Enzyme involved in amyloid-beta production."
+    },
+    "TREM2": {
+        "category": "Immune receptor / microglial receptor",
+        "modality": "Antibody / immune modulation",
+        "note": "Microglial receptor linked to neuroinflammation."
+    },
+    "TAU": {
+        "category": "Aggregating protein / neurodegeneration target",
+        "modality": "Antibody / aggregation inhibitor / PROTAC exploration",
+        "note": "Protein aggregation target relevant to neurodegenerative disease."
+    },
+    "PSMA": {
+        "category": "Cell-surface antigen",
+        "modality": "Radioligand therapy / ADC / CAR-T / bispecific antibody",
+        "note": "Cell-surface target with strong oncology development precedent."
+    },
+    "AR": {
+        "category": "Nuclear receptor / transcription factor",
+        "modality": "Small molecule antagonist / degrader / pathway modulation",
+        "note": "Hormone signaling target with established therapeutic relevance."
+    },
+    "METTL3": {
+        "category": "RNA modification enzyme",
+        "modality": "Small molecule inhibitor / RNA regulation strategy",
+        "note": "Emerging epitranscriptomic target."
+    },
+}
+
+
 def build_pubmed_query(disease_name: str) -> str:
     """
     사용자가 입력한 질환명을 PubMed 검색용 query로 바꾸는 함수.
-
-    예:
-    Alzheimer's disease 입력
-    → ("Alzheimer's disease"[Title/Abstract]) AND (biomarker OR "drug target" OR protein OR pathway OR mechanism)
     """
 
     disease_name = disease_name.strip()
@@ -81,8 +201,6 @@ def build_pubmed_query(disease_name: str) -> str:
 def search_pubmed_ids(query: str, max_results: int) -> list:
     """
     PubMed ESearch API를 사용해 검색어에 해당하는 PMID 목록을 가져오는 함수.
-
-    PMID는 PubMed 논문의 고유 ID다.
     """
 
     params = {
@@ -105,9 +223,6 @@ def search_pubmed_ids(query: str, max_results: int) -> list:
 def get_text_from_element(element) -> str:
     """
     XML element 안의 모든 텍스트를 하나로 합치는 보조 함수.
-
-    PubMed 초록은 여러 조각으로 나뉘어 있을 수 있어서,
-    이 함수를 통해 안전하게 합쳐준다.
     """
 
     if element is None:
@@ -121,19 +236,15 @@ def extract_article_info(article) -> dict:
     PubMed XML에서 논문 제목, 저널, 연도, 초록, PMID를 추출하는 함수.
     """
 
-    # PMID 추출
     pmid_element = article.find(".//PMID")
     pmid = pmid_element.text if pmid_element is not None else ""
 
-    # 논문 제목 추출
     title_element = article.find(".//ArticleTitle")
     title = get_text_from_element(title_element)
 
-    # 저널명 추출
     journal_element = article.find(".//Journal/Title")
     journal = get_text_from_element(journal_element)
 
-    # 출판연도 추출
     year_element = article.find(".//JournalIssue/PubDate/Year")
     if year_element is not None:
         year = year_element.text
@@ -141,12 +252,10 @@ def extract_article_info(article) -> dict:
         medline_date_element = article.find(".//JournalIssue/PubDate/MedlineDate")
         year = medline_date_element.text if medline_date_element is not None else ""
 
-    # 초록 추출
     abstract_elements = article.findall(".//Abstract/AbstractText")
     abstract_parts = [get_text_from_element(element) for element in abstract_elements]
     abstract = " ".join([part for part in abstract_parts if part]).strip()
 
-    # PubMed 링크 생성
     pubmed_url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/" if pmid else ""
 
     return {
@@ -189,11 +298,6 @@ def extract_candidate_terms(text: str) -> list:
     논문 제목과 초록에서 후보 타깃/바이오마커처럼 보이는 용어를 추출하는 함수.
 
     현재는 MVP 단계이므로 정교한 AI 모델이 아니라 규칙 기반 방식을 사용한다.
-
-    추출 기준 예시:
-    - TP53, EGFR, BRCA1 같은 대문자 유전자/단백질 패턴
-    - IL-6, PD-L1, TNF-alpha 같은 하이픈 포함 바이오마커 패턴
-    - PI3K/AKT, JAK/STAT 같은 pathway 관련 키워드
     """
 
     if not text:
@@ -201,8 +305,6 @@ def extract_candidate_terms(text: str) -> list:
 
     candidate_terms = []
 
-    # 1. 대문자/숫자/하이픈 조합 패턴 추출
-    # 예: TP53, BRCA1, EGFR, HER2, IL-6, PD-L1, JAK1
     uppercase_pattern = r"\b[A-Z][A-Z0-9-]{1,12}\b"
     uppercase_matches = re.findall(uppercase_pattern, text)
 
@@ -210,28 +312,97 @@ def extract_candidate_terms(text: str) -> list:
         if term not in STOP_TERMS and len(term) >= 2:
             candidate_terms.append(term)
 
-    # 2. TNF-alpha, TGF-beta처럼 그리스 문자 표현이 포함된 용어 추출
     greek_pattern = r"\b[A-Z]{2,6}-(?:alpha|beta|gamma|delta)\b"
     greek_matches = re.findall(greek_pattern, text, flags=re.IGNORECASE)
 
     for term in greek_matches:
         candidate_terms.append(term)
 
-    # 3. pathway 키워드 추출
     lower_text = text.lower()
 
     for keyword in PATHWAY_KEYWORDS:
         if keyword.lower() in lower_text:
             candidate_terms.append(keyword)
 
-    # 중복 제거는 하지 않고 그대로 반환한다.
-    # 이유: 빈도 계산을 위해 반복 등장 횟수를 보존해야 하기 때문이다.
     return candidate_terms
+
+
+def classify_candidate_term(term: str) -> dict:
+    """
+    추출된 후보 용어를 타깃 유형과 가능한 모달리티로 분류하는 함수.
+
+    1. 먼저 KNOWN_TARGET_RULES 사전에 있는지 확인한다.
+    2. 없으면 간단한 패턴 기반 규칙으로 추정한다.
+    3. 그래도 알 수 없으면 Unclassified로 표시한다.
+    """
+
+    normalized_term = term.strip()
+
+    if normalized_term in KNOWN_TARGET_RULES:
+        rule = KNOWN_TARGET_RULES[normalized_term]
+        return {
+            "Category": rule["category"],
+            "Possible Modality": rule["modality"],
+            "Classification Note": rule["note"]
+        }
+
+    upper_term = normalized_term.upper()
+
+    if upper_term in KNOWN_TARGET_RULES:
+        rule = KNOWN_TARGET_RULES[upper_term]
+        return {
+            "Category": rule["category"],
+            "Possible Modality": rule["modality"],
+            "Classification Note": rule["note"]
+        }
+
+    # 패턴 기반 추정 규칙
+    if normalized_term.startswith("IL-") or upper_term.startswith("IL"):
+        return {
+            "Category": "Possible cytokine / interleukin",
+            "Possible Modality": "Neutralizing antibody / receptor blockade",
+            "Classification Note": "Pattern-based classification. Requires validation."
+        }
+
+    if upper_term.startswith("JAK"):
+        return {
+            "Category": "Possible intracellular kinase",
+            "Possible Modality": "Small molecule inhibitor",
+            "Classification Note": "Pattern-based classification. Requires validation."
+        }
+
+    if upper_term.startswith("CD"):
+        return {
+            "Category": "Possible cell-surface antigen",
+            "Possible Modality": "Monoclonal antibody / ADC / CAR-T / bispecific antibody",
+            "Classification Note": "Pattern-based classification. Requires validation."
+        }
+
+    if upper_term.startswith("HLA"):
+        return {
+            "Category": "Immune-related antigen presentation molecule",
+            "Possible Modality": "Immune modulation / biomarker use",
+            "Classification Note": "Pattern-based classification. Requires validation."
+        }
+
+    if upper_term.endswith("R") and len(upper_term) <= 8:
+        return {
+            "Category": "Possible receptor",
+            "Possible Modality": "Antibody / small molecule / ligand-blocking therapy",
+            "Classification Note": "Pattern-based classification. Requires validation."
+        }
+
+    return {
+        "Category": "Unclassified candidate term",
+        "Possible Modality": "Requires database validation",
+        "Classification Note": "No rule matched. Future versions should validate using UniProt or Open Targets."
+    }
 
 
 def summarize_candidate_terms(papers: list) -> pd.DataFrame:
     """
-    여러 논문에서 추출된 후보 용어의 등장 빈도를 계산하는 함수.
+    여러 논문에서 추출된 후보 용어의 등장 빈도를 계산하고,
+    각 후보 용어에 대해 타깃 유형과 가능한 모달리티를 추가하는 함수.
     """
 
     all_terms = []
@@ -250,10 +421,15 @@ def summarize_candidate_terms(papers: list) -> pd.DataFrame:
     rows = []
 
     for term, count in term_counts.most_common():
+        classification = classify_candidate_term(term)
+
         rows.append(
             {
                 "Candidate Term": term,
-                "Frequency": count
+                "Frequency": count,
+                "Category": classification["Category"],
+                "Possible Modality": classification["Possible Modality"],
+                "Classification Note": classification["Classification Note"]
             }
         )
 
@@ -333,7 +509,7 @@ if st.button("Search PubMed with DTSR"):
                         use_container_width=True
                     )
 
-                    st.subheader("4. Candidate Target / Biomarker Term Extraction")
+                    st.subheader("4. Candidate Target / Biomarker Term Classification")
 
                     candidate_df = summarize_candidate_terms(papers)
 
@@ -347,8 +523,9 @@ if st.button("Search PubMed with DTSR"):
                     else:
                         st.write(
                             """
-                            The following terms were extracted from retrieved paper titles and abstracts
-                            using a simple rule-based MVP method.
+                            The following terms were extracted from retrieved paper titles and abstracts.
+                            DTSR then applies rule-based classification to estimate target category
+                            and possible therapeutic modality.
                             """
                         )
 
@@ -356,9 +533,9 @@ if st.button("Search PubMed with DTSR"):
 
                         st.caption(
                             """
-                            Note: This extraction is an early MVP heuristic.
-                            The extracted terms are not final drug targets.
-                            Future versions will validate them using Open Targets, UniProt,
+                            Note: This classification is an early MVP heuristic.
+                            Extracted terms are not validated drug targets.
+                            Future versions will validate them using UniProt, Open Targets,
                             pathway databases, and normal tissue expression data.
                             """
                         )
@@ -382,7 +559,7 @@ if st.button("Search PubMed with DTSR"):
 
                     st.markdown(
                         """
-                        The next development step is to validate extracted candidate terms
+                        The next development step is to validate extracted and classified candidate terms
                         using public biomedical databases.
 
                         Future versions will integrate:
@@ -410,5 +587,5 @@ if st.button("Search PubMed with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v3: PubMed API search with rule-based candidate target / biomarker term extraction."
+    "DTSR MVP v4: PubMed API search with rule-based candidate target classification and modality suggestion."
 )
