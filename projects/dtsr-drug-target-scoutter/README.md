@@ -203,3 +203,43 @@ Protein Name
 Organism
 Function
 UniProt URL
+```
+
+---
+
+## 8. Open Targets Entity Search Status
+
+The current version of DTSR includes an Open Targets entity search prototype.
+
+After retrieving PubMed metadata and abstracts, extracting candidate terms, classifying them, and validating selected candidates with UniProt, DTSR now searches Open Targets entities related to:
+
+- The input disease name
+- UniProt-validated candidate gene names
+
+This step prepares DTSR for future disease-target association evidence retrieval.
+
+---
+
+## 9. Implemented Open Targets Features
+
+Current implemented features include:
+
+- Open Targets GraphQL API connection
+- Disease entity search using the input disease name
+- Phenotype entity search support
+- Target entity search using UniProt-validated gene names
+- Open Targets ID retrieval
+- Entity name retrieval
+- Entity type retrieval
+- Entity description retrieval
+- Disease entity candidate table
+- Target entity candidate table
+
+Current Open Targets output includes:
+
+```text
+Open Targets ID
+Name
+Entity Type
+Description
+
