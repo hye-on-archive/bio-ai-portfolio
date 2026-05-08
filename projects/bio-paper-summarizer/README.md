@@ -2,9 +2,11 @@
 
 ## 1. Project Overview
 
-Bio Paper Summarizer is a generative AI-based tool designed to help users understand biomedical research papers more efficiently.
+Bio Paper Summarizer is a generative AI-based prototype designed to help users understand biomedical research papers more efficiently.
 
-This project takes a biomedical paper abstract or text as input and summarizes it into structured sections such as background, purpose, methods, key results, limitations, and future research ideas.
+This project takes a biomedical paper abstract or research text as input and summarizes it into structured sections such as background, purpose, methods, key results, limitations, and future research ideas.
+
+The main goal of this project is to explore how generative AI can support biomedical literature understanding.
 
 ---
 
@@ -25,38 +27,84 @@ This project aims to use generative AI to summarize biomedical papers into clear
 Planned output sections include:
 
 - One-sentence summary
+
 - Research background
+
 - Research purpose
+
 - Experimental methods
+
 - Key results
+
 - Limitations
+
 - Future research ideas
+
 - Beginner-friendly explanation
+
+- Important keywords
 
 ---
 
 ## 4. Target Users
 
 - Biology students
+
 - Biomedical researchers
+
 - Pharmaceutical and biotechnology job applicants
+
 - Beginners studying biomedical AI
+
 - People who need to review biomedical papers efficiently
 
 ---
 
-## 5. Planned Features
 
-- Input box for biomedical abstract or text
-- Structured AI-generated summary
-- Beginner-friendly explanation mode
-- Keyword extraction
-- Future research idea generation
-- Research report format output
+
+## 5. Current Features
+
+Current implemented features:
+
+- Basic Streamlit app interface
+
+- Biomedical abstract input box
+
+- Generate Summary button
+
+- Structured summary output layout
+
+- Prompt template for paper summarization
+
+- Sample input and output documentation
+
+Current status: Prototype UI / Planning stage
 
 ---
 
-## 6. Planned Tech Stack
+## 6. Project Structure
+
+```text
+
+bio-paper-summarizer/
+
+├── README.md
+
+├── app.py
+
+├── requirements.txt
+
+├── prompts/
+
+│   └── paper_summary_prompt.md
+
+└── examples/
+
+    └── sample_output.md
+
+------
+
+## 7. Planned Tech Stack
 
 - Python
 - Streamlit
@@ -66,7 +114,7 @@ Planned output sections include:
 
 ---
 
-## 7. Current Status
+## 8. Current Status
 
 Status: Planning / Prototype
 
@@ -79,7 +127,7 @@ Current progress:
 
 ---
 
-## 8. Next Steps
+## 9. Next Steps
 
 - Create a simple Streamlit app
 - Design the first prompt template
