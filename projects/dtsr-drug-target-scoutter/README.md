@@ -249,3 +249,31 @@ Current version:
 
 ```text
 DTSR MVP v2: PubMed API Search Prototype
+
+---
+
+## 13. Candidate Target Extraction Status
+
+The current version of DTSR includes a rule-based candidate target and biomarker term extraction feature.
+
+After retrieving PubMed metadata and abstracts through public APIs, DTSR analyzes paper titles and abstracts to extract candidate terms that may represent biomarkers, genes, proteins, pathways, or drug target-related molecules.
+
+### Implemented Candidate Extraction Features
+
+Current implemented features include:
+
+- Title and abstract text collection from PubMed records
+- Rule-based extraction of uppercase gene/protein-like terms
+- Extraction of terms such as gene symbols, protein names, cytokines, and pathway-related keywords
+- Frequency counting of extracted candidate terms
+- Candidate term table display
+- Clear warning that extracted terms are not final validated drug targets
+
+---
+
+## 14. Current MVP Version
+
+Current version:
+
+```text
+DTSR MVP v3: PubMed API Search + Rule-based Candidate Term Extraction
