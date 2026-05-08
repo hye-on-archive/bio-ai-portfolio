@@ -954,35 +954,51 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 
                         st.subheader("7. Open Targets Association Score Prototype")
 
-                        disease_id = safe_get_first_disease_id(disease_ot_df)
+disease_options = create_disease_selection_options(disease_ot_df)
 
-                        if not disease_id:
-                            st.warning(
-                                """
-                                No valid Open Targets disease ID was found.
-                                Association score retrieval cannot be performed.
-                                """
-                            )
-                        else:
-                            with st.spinner("Retrieving Open Targets association scores..."):
-                                association_df = build_association_table(
-                                    target_ot_df,
-                                    disease_id
-                                )
+if not disease_options:
+    st.warning(
+        """
+        No valid Open Targets disease entity candidates were found.
+        Association score retrieval cannot be performed.
+        """
+    )
+else:
+    selected_disease_option = st.selectbox(
+        "Select the correct Open Targets disease entity for association scoring:",
+        options=disease_options
+    )
 
-                            if association_df.empty:
-                                st.warning("No association score table could be generated.")
-                            else:
-                                st.dataframe(association_df, use_container_width=True)
+    selected_disease_id = extract_disease_id_from_option(selected_disease_option)
 
-                                st.caption(
-                                    """
-                                    Association scores are retrieved from Open Targets using the first
-                                    disease entity candidate and target entity candidates.
-                                    This is an MVP prototype and requires careful entity selection validation.
-                                    """
-                                )
+    st.write(f"Selected Open Targets Disease ID: `{selected_disease_id}`")
 
+    if not selected_disease_id:
+        st.warning(
+            """
+            No valid disease ID was selected.
+            Association score retrieval cannot be performed.
+            """
+        )
+    else:
+        with st.spinner("Retrieving Open Targets association scores using selected disease entity..."):
+            association_df = build_association_table(
+                target_ot_df,
+                selected_disease_id
+            )
+
+        if association_df.empty:
+            st.warning("No association score table could be generated.")
+        else:
+            st.dataframe(association_df, use_container_width=True)
+
+            st.caption(
+                """
+                Association scores are retrieved from Open Targets using the user-selected
+                disease entity and target entity candidates. This improves reliability compared
+                with automatically selecting the first disease candidate.
+                """
+            )
                     st.subheader("8. Paper Details")
 
                     for index, paper in enumerate(papers, start=1):
@@ -1029,5 +1045,5 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 st.divider()
 
 st.caption(
-    "DTSR MVP v7: PubMed API + UniProt validation + Open Targets association score prototype."
+    "DTSR MVP v8: PubMed API + UniProt validation + user-selected Open Targets disease association scoring."
 )
