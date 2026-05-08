@@ -242,4 +242,42 @@ Open Targets ID
 Name
 Entity Type
 Description
+```
+
+---
+
+## 10. Open Targets Association Score Prototype
+
+The current version of DTSR includes an Open Targets association score prototype.
+
+After retrieving PubMed metadata and abstracts, extracting candidate terms, validating selected candidates with UniProt, and searching Open Targets disease and target entities, DTSR attempts to retrieve disease-target association scores from Open Targets.
+
+This step helps DTSR move from entity search toward evidence-based target prioritization.
+
+---
+
+## 11. Implemented Association Score Features
+
+Current implemented features include:
+
+- Open Targets disease entity search
+- Open Targets target entity search
+- Automatic selection of the first disease entity candidate
+- Target-disease association score query prototype
+- Evidence type score retrieval when available
+- Association status display
+- Association score table generation
+
+Current association output includes:
+
+```text
+Candidate Term
+Gene Name
+Open Targets Target ID
+Open Targets Target Name
+Open Targets Disease ID
+Association Score
+Association Status
+Evidence Type Scores
+```
 
