@@ -750,6 +750,93 @@ def safe_get_first_disease_id(disease_ot_df: pd.DataFrame) -> str:
 
     return first_id
 
+def create_disease_selection_options(disease_ot_df: pd.DataFrame) -> list:
+    """
+    Open Targets disease 후보 DataFrame을 selectbox에서 사용할 수 있는 옵션 목록으로 바꾸는 함수.
+
+    각 옵션은 사용자가 보기 쉽게:
+    Open Targets ID | Name | Entity Type
+    형태로 만든다.
+    """
+
+    if disease_ot_df.empty:
+        return []
+
+    options = []
+
+    for _, row in disease_ot_df.iterrows():
+        disease_id = row.get("Open Targets ID", "")
+        name = row.get("Name", "")
+        entity_type = row.get("Entity Type", "")
+
+        if disease_id:
+            option = f"{disease_id} | {name} | {entity_type}"
+            options.append(option)
+
+    return options
+
+
+def extract_disease_id_from_option(option: str) -> str:
+    """
+    selectbox에서 선택된 문자열에서 Open Targets disease ID만 추출하는 함수.
+
+    예:
+    'EFO_0000685 | rheumatoid arthritis | disease'
+    → 'EFO_0000685'
+    """
+
+    if not option:
+        return ""
+
+    return option.split("|")[0].strip()
+
+
+def create_target_selection_options(target_ot_df: pd.DataFrame) -> list:
+    """
+    Open Targets target 후보 DataFrame을 selectbox에서 사용할 수 있는 옵션 목록으로 바꾸는 함수.
+
+    각 옵션은 사용자가 보기 쉽게:
+    Candidate Term | Gene Name | Open Targets ID | Name
+    형태로 만든다.
+    """
+
+    if target_ot_df.empty:
+        return []
+
+    options = []
+
+    for _, row in target_ot_df.iterrows():
+        candidate_term = row.get("Candidate Term", "")
+        gene_name = row.get("Gene Name", "")
+        target_id = row.get("Open Targets ID", "")
+        target_name = row.get("Name", "")
+
+        if target_id:
+            option = f"{candidate_term} | {gene_name} | {target_id} | {target_name}"
+            options.append(option)
+
+    return options
+
+
+def extract_target_id_from_option(option: str) -> str:
+    """
+    selectbox에서 선택된 문자열에서 Open Targets target ID만 추출하는 함수.
+
+    예:
+    'IL-6 | IL6 | ENSG00000136244 | interleukin 6'
+    → 'ENSG00000136244'
+    """
+
+    if not option:
+        return ""
+
+    parts = option.split("|")
+
+    if len(parts) < 3:
+        return ""
+
+    return parts[2].strip()
+
 
 def build_association_table(target_ot_df: pd.DataFrame, disease_id: str) -> pd.DataFrame:
     """
