@@ -157,3 +157,48 @@ Total score:
 
 ```text
 DTSR Score = sum of 7 criteria / 35
+
+---
+
+## 19. UniProt Validation Status
+
+The current version of DTSR includes a UniProt public API validation feature.
+
+After extracting and classifying candidate terms from PubMed titles and abstracts, DTSR validates selected candidate terms using the UniProt public API.
+
+This step helps DTSR check whether extracted candidate terms can be matched to reviewed human protein entries.
+
+---
+
+## 20. Implemented UniProt Validation Features
+
+Current implemented features include:
+
+- UniProt public API connection
+- Candidate term search against UniProtKB
+- Human protein filtering using organism ID 9606
+- Reviewed protein entry prioritization
+- UniProt accession retrieval
+- UniProt entry name retrieval
+- Gene name retrieval
+- Recommended protein name retrieval
+- Organism information retrieval
+- Functional annotation retrieval when available
+- UniProt URL generation
+
+Current UniProt validation output includes:
+
+```text
+Candidate Term
+Frequency
+Category
+Possible Modality
+Classification Note
+UniProt Match
+UniProt Accession
+UniProt Entry
+Gene Name
+Protein Name
+Organism
+Function
+UniProt URL
