@@ -951,8 +951,7 @@ if st.button("Search PubMed and Validate Candidates with DTSR"):
 
                         st.markdown("### Target Entity Candidates")
                         st.dataframe(target_ot_df, use_container_width=True)
-
-                                            st.subheader("7. Open Targets Association Score Prototype")
+                        st.subheader("7. Open Targets Association Score Prototype")
 
                         disease_options = create_disease_selection_options(disease_ot_df)
 
