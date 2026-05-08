@@ -157,6 +157,7 @@ Total score:
 
 ```text
 DTSR Score = sum of 7 criteria / 35
+```
 
 ---
 
